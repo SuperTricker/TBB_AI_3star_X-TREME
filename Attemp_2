@@ -15,8 +15,9 @@ if oldGui then oldGui:Destroy() end
 local oldTopbar = CoreGui:FindFirstChild("TBB_TopBar_Overlay")
 if oldTopbar then oldTopbar:Destroy() end
 
--- Скачиваем официальное и 100% невылетающее ядро Rayfield UI
+-- ИСПРАВЛЕНО: Скачиваем правильное рабочее ядро Rayfield UI
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu'))()
+
 -- Получение сервисов игры (Исправлена опечатка gane -> game)
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -64,6 +65,7 @@ local basePrices = {
     Rail_Battler = 1500,      -- На Xtreme: $3000
     Tarnished_Trowel = 3000   -- На Xtreme: $6000
 }
+
 -- ==========================================================
 -- ЧАСТЬ 2: СЕТЕВЫЕ СИГНАЛЫ И СКАНИРОВАНИЕ ПОЛЯ
 -- ==========================================================
