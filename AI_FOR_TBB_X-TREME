@@ -1,0 +1,448 @@
+-- =========================================================
+-- ЧАСТЬ 1: БИБЛИОТЕЧНАЯ ЗАЩИТА ИИ ОТ ВЫЛЕТОВ И ОЧИСТКА ПАМЯТИ
+-- =========================================================
+if _G.TBB_AI_Connected then
+    _G.TBB_AI_Connected:Disconnect()
+    _G.TBB_AI_Connected = nil
+end
+
+-- Полная очистка старой графики и зависших элементов в Delta
+local oldGui = game:GetService("CoreGui"):FindFirstChild("Rayfield") or game:GetService("CoreGui"):FindFirstChild("TBB_NeuroAI_GUI")
+if oldGui then oldGui:Destroy() end
+local oldTopBar = game:GetService("CoreGui"):FindFirstChild("TBB_TopBar_Overlay")
+if oldTopBar then oldTopBar:Destroy() end
+
+-- Скачиваем официальное и 100% невылетающее ядро Rayfield UI
+local Rayfield = loadstring(game:HttpGet('https://githubusercontent.com'))()
+
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- =========================================================
+-- ГЛОБАЛЬНАЯ ДНК-ПАМЯТЬ ТВОЕГО ИИ (НЕ СБРАСЫВАЕТСЯ ПРИ РЕСТАРТАХ)
+-- =========================================================
+_G.AI_Total_Stress = _G.AI_Total_Stress or 0
+_G.Infernus_Timing_Offset = _G.Infernus_Timing_Offset or 0
+
+-- Хранилище исторического рекорда "Лучшего Момента" (Пика Силы по твоей формуле)
+_G.AI_Max_Match_Efficiency = _G.AI_Max_Match_Efficiency or 0   
+_G.AI_Best_Moment_Time = _G.AI_Best_Moment_Time or 0           
+_G.AI_Best_Moment_Stage = _G.AI_Best_Moment_Stage or "Нет данных"    
+_G.AI_Best_Infernus_Offset = _G.AI_Best_Infernus_Offset or 0   
+
+-- Состояние текущего запущенного раунда
+local isAutoMode = false 
+local isThinking = false 
+local currentStage = "Investment_4"
+local lastActionTime = 0
+local ACTION_COOLDOWN = 0.35 
+local lastUiUpdateTime = 0
+
+-- Переменные эффективности текущей катки
+local currentRoundMaxEfficiency = 0
+local currentRoundBestTime = 0
+local currentRoundBestStage = "Investment_4"
+
+-- Тайминги босса X-TREME
+local BOOT_UP_TIME = 40       -- 40 секунд босс включается
+local TOTAL_MATCH_TIME = 300   -- 5 минут до кабума
+local matchStartTime = nil
+
+local PRICE_MULTIPLIER = 2
+local basePrices = {
+    Trowel = 100,              -- На Xtreme: $200
+    Operator = 1500,           -- На Xtreme: $3000 (Твои 3к)
+    Prospect = 600,            -- На Xtreme: $1200
+    Atari = 600,               -- ИСПРАВЛЕНО! На Xtreme: $1200 (Твои 1200)
+    Lil_Infernus = 800,        -- На Xtreme: $1600
+    Conjuror = 500,            -- На Xtreme: $1000
+    Rail_Battler = 1500,       -- На Xtreme: $3000
+    Tarnished_Trowel = 3000    -- На Xtreme: $6000 (Ультимативный кроун-дефенс)
+}
+-- =========================================================
+-- ЧАСТЬ 2: СЕТЕВЫЕ СИГНАЛЫ И ЕЖЕСЕКУНДНЫЙ СКАНИРОВЩИК ПОЛЯ
+-- =========================================================
+local DeployRemote = ReplicatedStorage:FindFirstChild("DeployUnit") or ReplicatedStorage:FindFirstChild("SpawnUnit") or ReplicatedStorage:FindFirstChild("Summon")
+local UpgradeRemote = ReplicatedStorage:FindFirstChild("UpgradeInvestment") or ReplicatedStorage:FindFirstChild("Upgrade_Investment") or ReplicatedStorage:FindFirstChild("UpgradeUnit") or ReplicatedStorage:FindFirstChild("UpgradeBank")
+local GatlingRemote = ReplicatedStorage:FindFirstChild("UseGatling") or ReplicatedStorage:FindFirstChild("Gatling") or ReplicatedStorage:FindFirstChild("UseAbility")
+local RestartRemote = ReplicatedStorage:FindFirstChild("Restart") or ReplicatedStorage:FindFirstChild("RestartMatch") or ReplicatedStorage:FindFirstChild("Retry")
+
+local function spawnUnit(unitName)
+    if tick() - lastActionTime < ACTION_COOLDOWN then return false end
+    if DeployRemote then
+        lastActionTime = tick()
+        if DeployRemote:IsA("RemoteEvent") then DeployRemote:FireServer(unitName) end
+        return true
+    end
+    return false
+end
+
+local function upgradeTech(techName)
+    if tick() - lastActionTime < ACTION_COOLDOWN then return false end
+    if UpgradeRemote then
+        lastActionTime = tick()
+        if UpgradeRemote:IsA("RemoteEvent") then UpgradeRemote:FireServer(techName) end
+        return true
+    end
+    return false
+end
+
+local function useGatling()
+    if GatlingRemote and GatlingRemote:IsA("RemoteEvent") then GatlingRemote:FireServer("Gatling") end
+end
+
+local function getCash()
+    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+    if leaderstats and leaderstats:FindFirstChild("Cash") then return leaderstats.Cash.Value end
+    return 0
+end
+
+local function findEntity(name, exactCount)
+    local count = 0 local lastFound = nil
+    local folders = {Workspace, Workspace:FindFirstChild("Enemies"), Workspace:FindFirstChild("Friendly"), Workspace:FindFirstChild("Units")}
+    for _, folder in pairs(folders) do
+        if folder then
+            for _, child in pairs(folder:GetChildren()) do
+                if child.Name and string.find(string.lower(child.Name), string.lower(name)) then
+                    count = count + 1 lastFound = child
+                end
+            end
+        end
+    end
+    if exactCount then return count end
+    return lastFound
+end
+
+-- ЗАЦИКЛЕННЫЙ УМНЫЙ ГАТЛИНГ (Твои триггеры на деатмарки и взрыв Вархеада)
+local function checkSmartGatlingУсловия()
+    if not isAutoMode or isThinking then return end
+    local infernus = findEntity("Infernus")
+    if infernus then
+        local marks = 0
+        for _, obj in pairs(infernus:GetDescendants()) do
+            if obj.Name and (string.find(string.lower(obj.Name), "mark") or string.find(string.lower(obj.Name), "death")) then
+                marks = marks + 1
+            end
+        end
+        if marks >= 2 then
+            useGatling()
+            Rayfield:Notify({Title = "🔥 СЕЙВ ИНФЕРНУСА!", Content = "У него 2 деатмарка! Спасаю Гатлингом!", Duration = 3})
+            return
+        end
+    end
+    local warhead = findEntity("Warhead")
+    if warhead then
+        local isExploding = warhead:FindFirstChild("Exploding") or warhead:FindFirstChild("Charge") or (warhead:FindFirstChild("Humanoid") and warhead.Humanoid.Health < 500)
+        if isExploding then
+            useGatling()
+            Rayfield:Notify({Title = "🚨 ФИНАЛЬНЫЙ СНОС!", Content = "Вархеад взрывается! Добиваю Гатлингом!", Duration = 3})
+        end
+    end
+end
+
+-- СКАНИРОВАНИЕ И РАСЧЕТ ПИКА СИЛЫ (Твоя формула эффективности)
+local function evaluateCurrentEfficiency()
+    if not isAutoMode or isThinking or not matchStartTime then return end
+    local base = Workspace:FindFirstChild("Base") or Workspace:FindFirstChild("MainCore") or Workspace:FindFirstChild("Core")
+    if not base or not base:FindFirstChild("Humanoid") then return end
+    
+    local hpPercent = base.Humanoid.Health / base.Humanoid.MaxHealth
+    local ourUnits = findEntity("Trowel", true) + findEntity("Infernus", true) + findEntity("Atari", true) + findEntity("Rail", true)
+    local enemyUnits = findEntity("Enemy", true) + findEntity("Cyber", true) + findEntity("Bloodhorn", true)
+    
+    local currentEfficiency = (hpPercent * 100) + (ourUnits * 10) - (enemyUnits * 15)
+    local currentMatchTime = tick() - matchStartTime
+    
+    if currentEfficiency > currentRoundMaxEfficiency then
+        currentRoundMaxEfficiency = currentEfficiency
+        currentRoundBestTime = currentMatchTime
+        currentRoundBestStage = currentStage
+    end
+end
+
+task.spawn(function() while task.wait(1) do pcall(evaluateCurrentEfficiency) end end)
+-- =========================================================
+-- ЧАСТЬ 3: ГЕНЕТИЧЕСКОЕ ОБУЧЕНИЕ ИИ И ИНДИКАТОР ВЕРХНЕЙ ПЛАШКИ
+-- =========================================================
+local function runAiThinkingProcess(stageAtDefeat)
+    isThinking = true
+    _G.TopBarText.TextColor3 = Color3.fromRGB(255, 120, 0)
+    
+    local totalTimeSurvived = tick() - matchStartTime
+    
+    Rayfield:Notify({
+        Title = "💥 АНАЛИЗ ЛУЧШЕГО МОМЕНТА",
+        Content = "Поиск точки перелома боя и мутация ДНК...",
+        Duration = 4
+    })
+
+    -- Твоя логика: Сверяем пик эффективности текущей катки с историческим максимумом
+    if currentRoundMaxEfficiency > _G.AI_Max_Match_Efficiency then
+        _G.AI_Max_Match_Efficiency = currentRoundMaxEfficiency
+        _G.AI_Best_Moment_Time = currentRoundBestTime
+        _G.AI_Best_Moment_Stage = currentRoundBestStage
+        _G.AI_Best_Infernus_Offset = _G.Infernus_Timing_Offset
+        
+        _G.TopBarText.Text = string.format("🧠 ИИ: Нашел лучший момент на %d-й сек! Запоминаю...", math.floor(_G.AI_Best_Moment_Time))
+    else
+        _G.TopBarText.Text = "🧠 ИИ: Текущий раунд слабее пика. Откат к лучшей тактике..."
+        _G.Infernus_Timing_Offset = _G.AI_Best_Infernus_Offset
+    end
+
+    -- Твоя ювелирная корректировка ДНК вокруг лучшего момента
+    local timeDelta = totalTimeSurvived - currentRoundBestTime
+    if timeDelta <= 10 then
+        ACTION_COOLDOWN = math.max(0.20, ACTION_COOLDOWN - 0.03) -- Резкий слив после пика сил
+    else
+        _G.Infernus_Timing_Offset = _G.Infernus_Timing_Offset + 1.5 -- Медленное увядание фронта
+    end
+
+    task.wait(3.5) -- Фаза глубокого удержания мысли в памяти
+
+    currentRoundMaxEfficiency = 0
+    currentRoundBestTime = 0
+    
+    -- Вызов сигнала рестарта матча
+    if RestartRemote and RestartRemote:IsA("RemoteEvent") then
+        RestartRemote:FireServer()
+    else
+        local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+        if pGui then
+            for _, btn in pairs(pGui:GetDescendants()) do
+                if btn:IsA("TextButton") and (string.find(string.lower(btn.Name), "restart") or string.find(string.lower(btn.Text), "retry")) then
+                    pcall(function() firesignal(btn.MouseButton1Click) end)
+                    break
+                end
+            end
+        end
+    end
+
+    isThinking = false
+    currentStage = "Investment_4"
+    matchStartTime = tick()
+end
+
+local function handleAiDefeat(reason, stressPoints)
+    if isThinking then return end
+    _G.AI_Total_Stress = _G.AI_Total_Stress + stressPoints
+    
+    if _G.AI_Total_Stress >= 15 then
+        _G.AI_Total_Stress = 0 
+        task.spawn(function() runAiThinkingProcess(currentStage) end)
+    end
+end
+
+-- Ежесекундное отслеживание критического ХП базы для накопления стресса (Твои коэффициенты паники)
+task.spawn(function()
+    while task.wait(1) do
+        if isAutoMode and not isThinking then
+            local base = Workspace:FindFirstChild("Base") or Workspace:FindFirstChild("MainCore") or Workspace:FindFirstChild("Core")
+            if base and base:FindFirstChild("Humanoid") then
+                local hpPercent = base.Humanoid.Health / base.Humanoid.MaxHealth
+                if hpPercent < 0.25 then
+                    handleAiDefeat("Danger", 2) -- Зона Danger (+2 стресса)
+                elseif hpPercent < 0.55 then
+                    handleAiDefeat("Critical", 5) -- Зона Critical (+5 стресса)
+                end
+            end
+        end
+    end
+end)
+
+-- НЕЗАВИСИМАЯ ЗАКРЕПЛЕННАЯ ПЛАШКА СВЕРХУ ЭКРАНА (ИНДИКАТОР НАЧАЛЬНИКА)
+local TopBarGui = Instance.new("ScreenGui")
+TopBarGui.Name = "TBB_TopBar_Overlay"
+TopBarGui.ResetOnSpawn = false
+TopBarGui.Parent = game:GetService("CoreGui")
+
+local TopBarFrame = Instance.new("Frame")
+TopBarFrame.Size = UDim2.new(0, 520, 0, 35)
+TopBarFrame.Position = UDim2.new(0.5, -260, 0, 5)
+TopBarFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+TopBarFrame.BackgroundTransparency = 0.15
+TopBarFrame.BorderSizePixel = 0
+TopBarFrame.Parent = TopBarGui
+
+local TopBarCorner = Instance.new("UICorner")
+TopBarCorner.CornerRadius = UDim.new(0, 8)
+TopBarCorner.Parent = TopBarFrame
+
+_G.TopBarText = Instance.new("TextLabel")
+_G.TopBarText.Size = UDim2.new(1, 0, 1, 0)
+_G.TopBarText.BackgroundTransparency = 1
+_G.TopBarText.TextColor3 = Color3.fromRGB(255, 255, 255)
+_G.TopBarText.TextSize = 13
+_G.TopBarText.Font = Enum.Font.SourceSansBold
+_G.TopBarText.Text = "🧠 НЕЙРО-НАЧАЛЬНИК: ОЖИДАНИЕ СТАРТА МАТЧА"
+_G.TopBarText.Parent = TopBarFrame
+local TopBarText = _G.TopBarText
+-- =========================================================
+-- ЧАСТЬ 4: ИНИЦИАЛИЗАЦИЯ ИНТЕРФЕЙСА RAYFIELD И ЦЕПОЧКА ШАГОВ
+-- =========================================================
+local Window = Rayfield:CreateWindow({
+    Name = "The Battle Bricks: NeuroAI Core",
+    LoadingTitle = "Адаптивный ИИ Начальник...",
+    LoadingSubtitle = "Монолитная стабильная сборка",
+    ConfigurationSaving = { Enabled = false },
+    KeySystem = false 
+})
+
+local MainTab = Window:CreateTab("Ядро ИИ", 4483362458)
+local DataTab = Window:CreateTab("Анализ Стресса", 4483362458)
+
+MainTab:CreateToggle({
+    Name = "Активировать Живой ИИ (X-TREME)",
+    CurrentValue = false,
+    Flag = "AiToggle",
+    Callback = function(Value)
+        isAutoMode = Value
+        if isAutoMode then
+            matchStartTime = tick()
+            currentStage = "Investment_4"
+            Rayfield:Notify({Title = "ИИ АКТИВИРОВАН", Content = "Высокострессовый разгон по твоей тактике начат!", Duration = 3})
+        else
+            TopBarText.Text = "🧠 ИИ ОТКЛЮЧЕН ИГРОКОМ"
+            TopBarText.TextColor3 = Color3.fromRGB(255, 100, 100)
+        end
+    end,
+})
+
+-- Твои плашки для мониторинга эволюции бота
+local StressLabel = DataTab:CreateLabel("Текущий накопленный стресс системы: 0/15")
+local OffsetLabel = DataTab:CreateLabel("Адаптивный сдвиг спавна Инфернуса: 0 сек")
+local BestMomentLabel = DataTab:CreateLabel("Пик эффективности ИИ достигнут на: 0 сек")
+local BestStageLabel = DataTab:CreateLabel("Стадия лучшего момента: Нет данных")
+
+-- ПОШАГОВЫЙ БОЕВОЙ ЦИКЛ HEARTBEAT (ТВОЯ ИДЕАЛЬНАЯ СТРАТЕГИЯ С КАРТИНКИ)
+_G.TBB_AI_Connected = RunService.Heartbeat:Connect(function()
+    if not isAutoMode or isThinking then return end
+    
+    if not matchStartTime then matchStartTime = tick() end
+    
+    local myCash = getCash()
+    local timePassed = tick() - matchStartTime
+    
+    -- Проверка триггеров на умный Гатлинг каждый кадр
+    checkSmartGatlingУсловия()
+    
+    -- Оптимизированное обновление интерфейсов раз в 0.2 сек (защита от лагов)
+    if tick() - lastUiUpdateTime > 0.2 then
+        lastUiUpdateTime = tick()
+        
+        StressLabel:Set("Текущий накопленный стресс системы: " .. _G.AI_Total_Stress .. "/15")
+        OffsetLabel:Set(string.format("Адаптивный сдвиг: %.1f сек", _G.Infernus_Timing_Offset))
+        BestMomentLabel:Set(string.format("Пик эффективности на: %d сек", math.floor(_G.AI_Best_Moment_Time)))
+        BestStageLabel:Set("Стадия лучшего момента: " .. _G.AI_Best_Moment_Stage)
+        
+        if timePassed <= BOOT_UP_TIME then
+            local timeLeft = math.max(0, math.floor(BOOT_UP_TIME - timePassed))
+            TopBarText.Text = string.format("🔋 РАЗГОН ЭКОНОМИКИ (Босс спит): %d сек | Налик: $%d", timeLeft, myCash)
+            TopBarText.TextColor3 = Color3.fromRGB(0, 255, 120)
+        else
+            local battleTime = timePassed - BOOT_UP_TIME
+            local kaboomTime = math.max(0, TOTAL_MATCH_TIME - battleTime)
+            local mins = math.floor(kaboomTime / 60)
+            local secs = math.floor(kaboomTime % 60)
+            
+            if kaboomTime <= 60 then
+                TopBarText.Text = string.format("🚨 СТРЕСС-ЭНДГЕЙМ! ДО КАБУМА: %02d:%02d | Шаг: %s | Налик: $%d", mins, secs, currentStage, myCash)
+                TopBarText.TextColor3 = Color3.fromRGB(255, 30, 30)
+                handleAiDefeat("Кабум близко", 10) -- Пребывание в последней минуте перед кабумом дает +10 стресса
+            else
+                TopBarText.Text = string.format("⚔️ ИИ В БОЮ | ДО КАБУМА: %02d:%02d | ШАГ: %s | $%d", mins, secs, currentStage, myCash)
+                TopBarText.TextColor3 = Color3.fromRGB(255, 255, 255)
+            end
+        end
+    end
+    
+    -- ВЫПОЛНЕНИЕ ШАГОВ
+    if timePassed <= BOOT_UP_TIME then
+        if currentStage == "Investment_4" then
+            upgradeTech("Investment")
+        end
+    else
+        if currentStage == "Investment_4" then
+            currentStage = "Spawn_2_Trowels"
+        end
+        
+        if currentStage == "Spawn_2_Trowels" then
+            if findEntity("Trowel", true) < 2 then spawnUnit("Trowel") else currentStage = "Wait_Infernus_BG4" end
+            
+        elseif currentStage == "Wait_Infernus_BG4" then
+            local bgNum = Workspace:FindFirstChild("BackgroundNumbers") or Workspace:FindFirstChild("BG_Numbers")
+            local bgValue = bgNum and bgNum.Value or 4
+            
+            -- Применяем сдвиг обучения нейросети (Infernus_Timing_Offset)
+            if (bgValue >= 4 or (tick() - matchStartTime) >= (BOOT_UP_TIME - _G.Infernus_Timing_Offset)) and myCash >= (basePrices.Lil_Infernus * PRICE_MULTIPLIER) then
+                if spawnUnit("Lil_Infernus") then currentStage = "Bank_5" end
+            end
+            
+        elseif currentStage == "Bank_5" then
+            upgradeTech("Bank")
+            if myCash >= (basePrices.Trowel * PRICE_MULTIPLIER) and findEntity("Trowel", true) < 4 then spawnUnit("Trowel")
+            elseif findEntity("Trowel", true) >= 4 then currentStage = "Bank_6" end
+            
+        elseif currentStage == "Bank_6" then
+            if upgradeTech("Bank") then currentStage = "Wait_Vigilante_Gatling" end
+            
+        elseif currentStage == "Wait_Vigilante_Gatling" then
+            currentStage = "Bank_8" -- Гатлинг контролируется твоей умной функцией, идем дальше
+            
+        elseif currentStage == "Bank_8" then
+            upgradeTech("Bank")
+            if myCash >= 2800 then currentStage = "Cash_2800_Trowel" end
+            
+        elseif currentStage == "Cash_2800_Trowel" then
+            if myCash >= (basePrices.Trowel * PRICE_MULTIPLIER) then
+                spawnUnit("Trowel") upgradeTech("Bank") currentStage = "Wait_Expunger"
+            end
+            
+        elseif currentStage == "Wait_Expunger" then
+            local expunger = findEntity("Expunger")
+            if expunger or myCash >= 3200 then spawnUnit("Trowel") currentStage = "Cash_3200_Infernus" end
+            
+        elseif currentStage == "Cash_3200_Infernus" then
+            if myCash >= (basePrices.Lil_Infernus * PRICE_MULTIPLIER) then
+                spawnUnit("Lil_Infernus") task.wait(0.4) spawnUnit("Trowel") task.wait(0.4) spawnUnit("Atari")
+                currentStage = "Wait_CyberBattler_Death"
+            end
+            
+        elseif currentStage == "Wait_CyberBattler_Death" then
+            local cyber = findEntity("Cyber")
+            if not cyber then spawnUnit("Prospect") currentStage = "Wait_Bloodhorn_Scream" end
+            
+        elseif currentStage == "Wait_Bloodhorn_Scream" then
+            local bloodhorn = findEntity("Bloodhorn")
+            local operatorExtremePrice = basePrices.Operator * PRICE_MULTIPLIER
+            local atariExtremePrice = basePrices.Atari * PRICE_MULTIPLIER
+            
+            -- Твоя исправленная логика цен (Оператор строго на 3к!)
+            if bloodhorn or myCash >= operatorExtremePrice then 
+                if spawnUnit("Operator") then
+                    task.wait(0.3)
+                    if getCash() >= atariExtremePrice then
+                        spawnUnit("Atari")
+                    end
+                    currentStage = "Late_Spam_Phase"
+                end
+            end
+            
+        elseif currentStage == "Late_Spam_Phase" then
+            local enemiesCount = findEntity("Enemy", true) or findEntity("Cyber", true)
+            
+            if myCash >= (basePrices.Rail_Battler * PRICE_MULTIPLIER) then spawnUnit("Rail_Battler") end
+            if myCash >= (basePrices.Prospect * PRICE_MULTIPLIER) then spawnUnit("Prospect") end
+            
+            -- Оценка ситуации: если врагов много — мясо, если мало — Атари
+            if enemiesCount > 3 then
+                spawnUnit("Trowel")
+                spawnUnit("Conjuror")
+            else
+                spawnUnit("Atari")
+            end
+        end
+    end
+end)
