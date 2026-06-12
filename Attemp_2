@@ -17,7 +17,6 @@ if oldTopbar then oldTopbar:Destroy() end
 
 -- Скачиваем официальное и 100% невылетающее ядро Rayfield UI
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu'))()
-
 -- Получение сервисов игры (Исправлена опечатка gane -> game)
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
