@@ -236,45 +236,7 @@ ToggleFrame.Parent = ScrollContent
 Instance.new("UICorner", ToggleFrame).CornerRadius = UDim.new(0, 6)
 
 local ToggleText = Instance.new("TextLabel")
-ToggleText.Size = UDim2.new(0, 200, 1, 0)
-ToggleText.Position = UDim2.new(0, 10, 0, 0)
-ToggleText.BackgroundTransparency = 1
-ToggleText.Text = "Активировать ИИ (X-TREME)"
-ToggleText.TextColor3 = Color3.fromRGB(230, 230, 230)
-ToggleText.TextSize = 13
-ToggleText.Font = Enum.Font.SourceSansBold
-ToggleText.TextXAlignment = Enum.TextXAlignment.Left
-ToggleText.Parent = ToggleFrame
-
-local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.new(0, 60, 0, 26)
-ToggleBtn.Position = UDim2.new(1, -70, 0, 7)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-ToggleBtn.Text = "ВЫКЛ"
-ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleBtn.Font = Enum.Font.SourceSansBold
-ToggleBtn.TextSize = 12
-ToggleBtn.Parent = ToggleFrame
-Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 4)
-
--- ТЕКСТОВЫЕ ПОЛЯ ДЛЯ МОНИТОРИНГА СТАТИСТИКИ КАТКИ
-local function createDataLabel(text)
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -10, 0, 30)
-    lbl.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    lbl.Text = "  " .. text
-    lbl.TextColor3 = Color3.fromRGB(200, 200, 200)
-    lbl.TextSize = 12
-    lbl.Font = Enum.Font.SourceSans
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = ScrollContent
-    Instance.new("UICorner", lbl).CornerRadius = UDim.new(0, 5)
-    return lbl
-end
-
-local StressLabel = createDataLabel("Текущий накопленный стресс системы: 0/15")
-local OffsetLabel = createDataLabel("Адаптивный сдвиг спавна Инфернуса: 0 сек")
-local BestMomentLabel = createDataLabel("Пик эффективности ИИ достигнут на: 0 сек")
+ToggleT
 -- ==========================================
 -- 4️⃣ ЧАСТЬ 4 ИЗ 6: CORNHUB NEUROAI CORE
 -- ==========================================
