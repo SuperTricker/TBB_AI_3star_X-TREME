@@ -275,6 +275,158 @@ end
 local StressLabel = createDataLabel("Текущий накопленный стресс системы: 0/15")
 local OffsetLabel = createDataLabel("Адаптивный сдвиг спавна Инфернуса: 0 сек")
 local BestMomentLabel = createDataLabel("Пик эффективности ИИ достигнут на: 0 сек")
+-- ==========================================
+-- 4️⃣ ЧАСТЬ 4 ИЗ 6: CORNHUB NEUROAI CORE
+-- ==========================================
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "CornHub_NeuroAI"
+ScreenGui.Parent = playerGui
+ScreenGui.ResetOnSpawn = false
+
+-- ГЛАВНЫЙ ФРЕЙМ МЕНЮ (МЕНЮШКА CORNHUB)
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 450, 0, 280)
+MainFrame.Position = UDim2.new(0.5, -225, 0.5, -140)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true -- Можно двигать по экрану на мобилке!
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 10)
+MainCorner.Parent = MainFrame
+
+-- ШАПКА МЕНЮ
+local TopBar = Instance.new("Frame")
+TopBar.Size = UDim2.new(1, 0, 0, 35)
+TopBar.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+TopBar.BorderSizePixel = 0
+TopBar.Parent = MainFrame
+
+local TopBarCorner = Instance.new("UICorner")
+TopBarCorner.CornerRadius = UDim.new(0, 10)
+TopBarCorner.Parent = TopBar
+
+-- ЛОГОТИП И НАЗВАНИЕ SCRIPTA
+local Logo = Instance.new("TextLabel")
+Logo.Size = UDim2.new(0, 120, 1, 0)
+Logo.Position = UDim2.new(0, 15, 0, 0)
+Logo.BackgroundTransparency = 1
+Logo.Text = "🌽 CornHub"
+Logo.TextColor3 = Color3.fromRGB(254, 154, 0) -- Тот самый оранжевый
+Logo.TextSize = 16
+Logo.Font = Enum.Font.SourceSansBold
+Logo.TextXAlignment = Enum.TextXAlignment.Left
+Logo.Parent = TopBar
+
+local SubTitle = Instance.new("TextLabel")
+SubTitle.Size = UDim2.new(0, 200, 1, 0)
+SubTitle.Position = UDim2.new(0, 105, 0, 0)
+SubTitle.BackgroundTransparency = 1
+SubTitle.Text = "| NeuroAI Core v3.0"
+SubTitle.TextColor3 = Color3.fromRGB(150, 150, 150)
+SubTitle.TextSize = 12
+SubTitle.Font = Enum.Font.SourceSans
+SubTitle.TextXAlignment = Enum.TextXAlignment.Left
+SubTitle.Parent = TopBar
+
+-- КНОПКА ЗАКРЫТИЯ МЕНЮ (КРЕСТИК)
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+CloseBtn.Position = UDim2.new(1, -35, 0, 2)
+CloseBtn.BackgroundTransparency = 1
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+CloseBtn.TextSize = 16
+CloseBtn.Font = Enum.Font.SourceSansBold
+CloseBtn.Parent = TopBar
+CloseBtn.MouseButton1Click:Connect(function() ScreenGui:Destroy() if _G.TBB_AI_Connected then _G.TBB_AI_Connected:Disconnect() end end)
+
+-- БОКОВОЙ НАВИГАТОР ПО ВКЛАДКАМ
+local NavFrame = Instance.new("Frame")
+NavFrame.Size = UDim2.new(0, 120, 1, -35)
+NavFrame.Position = UDim2.new(0, 0, 0, 35)
+NavFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+NavFrame.BorderSizePixel = 0
+NavFrame.Parent = MainFrame
+
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Size = UDim2.new(1, -130, 1, -45)
+ContentFrame.Position = UDim2.new(0, 125, 0, 40)
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.Parent = MainFrame
+
+local ScrollContent = Instance.new("ScrollingFrame")
+ScrollContent.Size = UDim2.new(1, 0, 1, 0)
+ScrollContent.BackgroundTransparency = 1
+ScrollContent.CanvasSize = UDim2.new(0, 0, 0, 350)
+ScrollContent.ScrollBarThickness = 4
+ScrollContent.Parent = ContentFrame
+
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.Padding = UDim.new(0, 8)
+UIListLayout.Parent = ScrollContent
+
+local Tab1Btn = Instance.new("TextButton")
+Tab1Btn.Size = UDim2.new(0, 110, 0, 30)
+Tab1Btn.Position = UDim2.new(0, 5, 0, 10)
+Tab1Btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Tab1Btn.Text = "🧠 Ядро ИИ"
+Tab1Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+Tab1Btn.Font = Enum.Font.SourceSansBold
+Tab1Btn.TextSize = 13
+Tab1Btn.Parent = NavFrame
+Instance.new("UICorner", Tab1Btn).CornerRadius = UDim.new(0, 5)
+
+-- КНОПКА ТРИГГЕРА АВТОФАРМА (TOGGLE)
+local ToggleFrame = Instance.new("Frame")
+ToggleFrame.Size = UDim2.new(1, -10, 0, 40)
+ToggleFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+ToggleFrame.Parent = ScrollContent
+Instance.new("UICorner", ToggleFrame).CornerRadius = UDim.new(0, 6)
+
+local ToggleText = Instance.new("TextLabel")
+ToggleText.Size = UDim2.new(0, 200, 1, 0)
+ToggleText.Position = UDim2.new(0, 10, 0, 0)
+ToggleText.BackgroundTransparency = 1
+ToggleText.Text = "Активировать ИИ (X-TREME)"
+ToggleText.TextColor3 = Color3.fromRGB(230, 230, 230)
+ToggleText.TextSize = 13
+ToggleText.Font = Enum.Font.SourceSansBold
+ToggleText.TextXAlignment = Enum.TextXAlignment.Left
+ToggleText.Parent = ToggleFrame
+
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(0, 60, 0, 26)
+ToggleBtn.Position = UDim2.new(1, -70, 0, 7)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+ToggleBtn.Text = "ВЫКЛ"
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.Font = Enum.Font.SourceSansBold
+ToggleBtn.TextSize = 12
+ToggleBtn.Parent = ToggleFrame
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 4)
+
+-- ТЕКСТОВЫЕ ПОЛЯ ДЛЯ МОНИТОРИНГА СТАТИСТИКИ КАТКИ
+local function createDataLabel(text)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -10, 0, 30)
+    lbl.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    lbl.Text = "  " .. text
+    lbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+    lbl.TextSize = 12
+    lbl.Font = Enum.Font.SourceSans
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = ScrollContent
+    Instance.new("UICorner", lbl).CornerRadius = UDim.new(0, 5)
+    return lbl
+end
+
+local StressLabel = createDataLabel("Текущий накопленный стресс системы: 0/15")
+local OffsetLabel = createDataLabel("Адаптивный сдвиг спавна Инфернуса: 0 сек")
+local BestMomentLabel = createDataLabel("Пик эффективности ИИ достигнут на: 0 сек")
 local BestStageLabel = createDataLabel("Стадия лучшего момента: Нет данных")
 
 -- ОТДЕЛЬНАЯ ПЛАШКА МОНИТОРИНГА ВВЕРХУ ЭКРАНА ИГРЫ
@@ -352,6 +504,7 @@ ToggleBtn.MouseButton1Click:Connect(function()
         _G.TopBarText.TextColor3 = Color3.fromRGB(255, 100, 100)
     end
 end)
+
 -- ==========================================
 -- 5️⃣ ЧАСТЬ 5 ИЗ 6: CORNHUB NEUROAI CORE
 -- ==========================================
