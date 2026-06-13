@@ -1,0 +1,587 @@
+-- ==========================================
+-- 1️⃣ ЧАСТЬ 1 ИЗ 6: CORNHUB NEUROAI CORE
+-- ==========================================
+
+-- ОЧИСТКА СТАРЫХ ПОТОКОВ (БЕЗ ИСПОЛЬЗОВАНИЯ КРАШАЩЕГО COREGUI)
+if _G.TBB_AI_Connected then
+    _G.TBB_AI_Connected:Disconnect()
+    _G.TBB_AI_Connected = nil
+end
+
+local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+local oldGui = playerGui:FindFirstChild("CornHub_NeuroAI")
+if oldGui then oldGui:Destroy() end
+local oldTopbar = playerGui:FindFirstChild("TBB_TopBar_Overlay")
+if oldTopbar then oldTopbar:Destroy() end
+
+-- ПОДКЛЮЧЕНИЕ СЕРВИСОВ ROBLOX
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- ГЛОБАЛЬНАЯ ДНК-ПАМЯТЬ ИИ (НЕ СБРАСЫВАЕТСЯ ПРИ ПЕРЕЗАПУСКАХ МАТЧА)
+_G.AI_Total_Stress = _G.AI_Total_Stress or 0
+_G.Infernus_Timing_Offset = _G.Infernus_Timing_Offset or 0
+_G.AI_Max_Match_Efficiency = _G.AI_Max_Match_Efficiency or 0
+_G.AI_Best_Moment_Time = _G.AI_Best_Moment_Time or 0
+_G.AI_Best_Moment_Stage = _G.AI_Best_Moment_Stage or "Нет данных"
+_G.AI_Best_Infernus_Offset = _G.AI_Best_Infernus_Offset or 0
+-- ==========================================
+-- 2️⃣ ЧАСТЬ 2 ИЗ 6: CORNHUB NEUROAI CORE
+-- ==========================================
+
+-- СОСТОЯНИЕ РАУНДА И ТЕКУЩИЕ НАСТРОЙКИ
+local isAutoMode = false
+local isThinking = false
+local currentStage = "Investment_4"
+local lastActionTime = 0
+local ACTION_COOLDOWN = 0.35
+local lastUIUpdateTime = 0
+
+-- ПЕРЕМЕННЫЕ ЭФФЕКТИВНОСТИ ТЕКУЩЕЙ КАТКИ
+local currentRoundMaxEfficiency = 0
+local currentRoundBestTime = 0
+local currentRoundBestStage = "Investment_4"
+
+-- ТАЙМИНГИ И СДВИГИ БОЯ
+local BOOT_UP_TIME = 40
+local TOTAL_MATCH_TIME = 300
+local matchStartTime = tick()
+
+-- НАСТРОЙКИ СТОИМОСТИ ЮНИТОВ
+local PRICE_MULTIPLIER = 2
+local basePrices = {
+    Trowel = 100,
+    Operator = 1500,
+    Prospect = 600,
+    Atari = 600,
+    Lil_Infernus = 800,
+    Conjurer = 500,
+    Rail_Battler = 1500,
+    Tarnished_Trowel = 3000
+}
+
+-- ПОДКЛЮЧЕНИЕ СЕТЕВЫХ СИГНАЛОВ С ЗАЩИТОЙ ОТ NIL (ДЛЯ ДЕЛЬТЫ)
+local DeployRemote = ReplicatedStorage:WaitForChild("DeployUnit", 5) or ReplicatedStorage:WaitForChild("SpawnUnit", 5)
+local UpgradeRemote = ReplicatedStorage:WaitForChild("UpgradeInvestment", 5) or ReplicatedStorage:WaitForChild("Upgrade_Investment", 5) or ReplicatedStorage:WaitForChild("UpgradeUnit", 5) or ReplicatedStorage:WaitForChild("UpgradeBank", 5)
+local GatlingRemote = ReplicatedStorage:WaitForChild("UseGatling", 5) or ReplicatedStorage:WaitForChild("Gatling", 5) or ReplicatedStorage:WaitForChild("UseAbility", 5)
+local RestartRemote = ReplicatedStorage:WaitForChild("Restart", 5) or ReplicatedStorage:WaitForChild("RestartMatch", 5) or ReplicatedStorage:WaitForChild("Retry", 5)
+-- ==========================================
+-- 3️⃣ ЧАСТЬ 3 ИЗ 6: CORNHUB NEUROAI CORE
+-- ==========================================
+
+-- ФУНКЦИИ ОТПРАВКИ СЕТЕВЫХ СИГНАЛОВ (СПАВН И АПГРЕЙД)
+local function spawnUnit(unitName)
+    if tick() - lastActionTime < ACTION_COOLDOWN then return false end
+    if DeployRemote then
+        lastActionTime = tick()
+        DeployRemote:FireServer(unitName)
+        return true
+    end
+    return false
+end
+
+local function upgradeTech(techName)
+    if tick() - lastActionTime < ACTION_COOLDOWN then return false end
+    if UpgradeRemote then
+        lastActionTime = tick()
+        UpgradeRemote:FireServer(techName)
+        return true
+    end
+    return false
+end
+
+local function useGatling()
+    if GatlingRemote then
+        GatlingRemote:FireServer("Gatling")
+    end
+end
+
+local function getCash()
+    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+    if leaderstats and leaderstats:FindFirstChild("Cash") then return leaderstats.Cash.Value end
+    return 0
+end
+
+-- БЕЗОПАСНЫЙ ПОИСК СУЩНОСТЕЙ С ЗАЩИТОЙ ОТ NIL-КРАША ПАПОК В WORKSPACE
+local function findEntity(name, exactCount)
+    local count = 0
+    local lastFound = nil
+    local folders = {Workspace:FindFirstChild("Enemies"), Workspace:FindFirstChild("Friendly"), Workspace:FindFirstChild("Units")}
+    for _, folder in pairs(folders) do
+        if folder then
+            for _, child in pairs(folder:GetChildren()) do
+                if string.find(string.lower(child.Name), string.lower(name)) then
+                    count = count + 1
+                    lastFound = child
+                end
+            end
+        end
+    end
+    if exactCount then return count end
+    return lastFound
+end
+-- ==========================================
+-- 4️⃣ ЧАСТЬ 4 ИЗ 6: CORNHUB NEUROAI CORE
+-- ==========================================
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "CornHub_NeuroAI"
+ScreenGui.Parent = playerGui
+ScreenGui.ResetOnSpawn = false
+
+-- ГЛАВНЫЙ ФРЕЙМ МЕНЮ (МЕНЮШКА CORNHUB)
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 450, 0, 280)
+MainFrame.Position = UDim2.new(0.5, -225, 0.5, -140)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true -- Можно двигать по экрану на мобилке!
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 10)
+MainCorner.Parent = MainFrame
+
+-- ШАПКА МЕНЮ
+local TopBar = Instance.new("Frame")
+TopBar.Size = UDim2.new(1, 0, 0, 35)
+TopBar.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+TopBar.BorderSizePixel = 0
+TopBar.Parent = MainFrame
+
+local TopBarCorner = Instance.new("UICorner")
+TopBarCorner.CornerRadius = UDim.new(0, 10)
+TopBarCorner.Parent = TopBar
+
+-- ЛОГОТИП И НАЗВАНИЕ SCRIPTA
+local Logo = Instance.new("TextLabel")
+Logo.Size = UDim2.new(0, 120, 1, 0)
+Logo.Position = UDim2.new(0, 15, 0, 0)
+Logo.BackgroundTransparency = 1
+Logo.Text = "🌽 CornHub"
+Logo.TextColor3 = Color3.fromRGB(254, 154, 0) -- Тот самый оранжевый
+Logo.TextSize = 16
+Logo.Font = Enum.Font.SourceSansBold
+Logo.TextXAlignment = Enum.TextXAlignment.Left
+Logo.Parent = TopBar
+
+local SubTitle = Instance.new("TextLabel")
+SubTitle.Size = UDim2.new(0, 200, 1, 0)
+SubTitle.Position = UDim2.new(0, 105, 0, 0)
+SubTitle.BackgroundTransparency = 1
+SubTitle.Text = "| NeuroAI Core v3.0"
+SubTitle.TextColor3 = Color3.fromRGB(150, 150, 150)
+SubTitle.TextSize = 12
+SubTitle.Font = Enum.Font.SourceSans
+SubTitle.TextXAlignment = Enum.TextXAlignment.Left
+SubTitle.Parent = TopBar
+
+-- КНОПКА ЗАКРЫТИЯ МЕНЮ (КРЕСТИК)
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+CloseBtn.Position = UDim2.new(1, -35, 0, 2)
+CloseBtn.BackgroundTransparency = 1
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+CloseBtn.TextSize = 16
+CloseBtn.Font = Enum.Font.SourceSansBold
+CloseBtn.Parent = TopBar
+CloseBtn.MouseButton1Click:Connect(function() ScreenGui:Destroy() if _G.TBB_AI_Connected then _G.TBB_AI_Connected:Disconnect() end end)
+
+-- БОКОВОЙ НАВИГАТОР ПО ВКЛАДКАМ
+local NavFrame = Instance.new("Frame")
+NavFrame.Size = UDim2.new(0, 120, 1, -35)
+NavFrame.Position = UDim2.new(0, 0, 0, 35)
+NavFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+NavFrame.BorderSizePixel = 0
+NavFrame.Parent = MainFrame
+
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Size = UDim2.new(1, -130, 1, -45)
+ContentFrame.Position = UDim2.new(0, 125, 0, 40)
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.Parent = MainFrame
+
+local ScrollContent = Instance.new("ScrollingFrame")
+ScrollContent.Size = UDim2.new(1, 0, 1, 0)
+ScrollContent.BackgroundTransparency = 1
+ScrollContent.CanvasSize = UDim2.new(0, 0, 0, 350)
+ScrollContent.ScrollBarThickness = 4
+ScrollContent.Parent = ContentFrame
+
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.Padding = UDim.new(0, 8)
+UIListLayout.Parent = ScrollContent
+
+local Tab1Btn = Instance.new("TextButton")
+Tab1Btn.Size = UDim2.new(0, 110, 0, 30)
+Tab1Btn.Position = UDim2.new(0, 5, 0, 10)
+Tab1Btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Tab1Btn.Text = "🧠 Ядро ИИ"
+Tab1Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+Tab1Btn.Font = Enum.Font.SourceSansBold
+Tab1Btn.TextSize = 13
+Tab1Btn.Parent = NavFrame
+Instance.new("UICorner", Tab1Btn).CornerRadius = UDim.new(0, 5)
+
+-- КНОПКА ТРИГГЕРА АВТОФАРМА (TOGGLE)
+local ToggleFrame = Instance.new("Frame")
+ToggleFrame.Size = UDim2.new(1, -10, 0, 40)
+ToggleFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+ToggleFrame.Parent = ScrollContent
+Instance.new("UICorner", ToggleFrame).CornerRadius = UDim.new(0, 6)
+
+local ToggleText = Instance.new("TextLabel")
+ToggleText.Size = UDim2.new(0, 200, 1, 0)
+ToggleText.Position = UDim2.new(0, 10, 0, 0)
+ToggleText.BackgroundTransparency = 1
+ToggleText.Text = "Активировать ИИ (X-TREME)"
+ToggleText.TextColor3 = Color3.fromRGB(230, 230, 230)
+ToggleText.TextSize = 13
+ToggleText.Font = Enum.Font.SourceSansBold
+ToggleText.TextXAlignment = Enum.TextXAlignment.Left
+ToggleText.Parent = ToggleFrame
+
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(0, 60, 0, 26)
+ToggleBtn.Position = UDim2.new(1, -70, 0, 7)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+ToggleBtn.Text = "ВЫКЛ"
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.Font = Enum.Font.SourceSansBold
+ToggleBtn.TextSize = 12
+ToggleBtn.Parent = ToggleFrame
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 4)
+
+-- ТЕКСТОВЫЕ ПОЛЯ ДЛЯ МОНИТОРИНГА СТАТИСТИКИ КАТКИ
+local function createDataLabel(text)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -10, 0, 30)
+    lbl.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    lbl.Text = "  " .. text
+    lbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+    lbl.TextSize = 12
+    lbl.Font = Enum.Font.SourceSans
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = ScrollContent
+    Instance.new("UICorner", lbl).CornerRadius = UDim.new(0, 5)
+    return lbl
+end
+
+local StressLabel = createDataLabel("Текущий накопленный стресс системы: 0/15")
+local OffsetLabel = createDataLabel("Адаптивный сдвиг спавна Инфернуса: 0 сек")
+local BestMomentLabel = createDataLabel("Пик эффективности ИИ достигнут на: 0 сек")
+local BestStageLabel = createDataLabel("Стадия лучшего момента: Нет данных")
+
+-- ОТДЕЛЬНАЯ ПЛАШКА МОНИТОРИНГА ВВЕРХУ ЭКРАНА ИГРЫ
+local OverlayGui = Instance.new("ScreenGui")
+OverlayGui.Name = "TBB_TopBar_Overlay"
+OverlayGui.Parent = playerGui
+
+local OverlayFrame = Instance.new("Frame")
+OverlayFrame.Size = UDim2.new(0, 430, 0, 35)
+OverlayFrame.Position = UDim2.new(0.5, -215, 0, 5)
+OverlayFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+OverlayFrame.BackgroundTransparency = 0.2
+OverlayFrame.Parent = OverlayGui
+Instance.new("UICorner", OverlayFrame).CornerRadius = UDim.new(0, 6)
+
+_G.TopBarText = Instance.new("TextLabel")
+_G.TopBarText.Size = UDim2.new(1, 0, 1, 0)
+_G.TopBarText.BackgroundTransparency = 1
+_G.TopBarText.TextColor3 = Color3.fromRGB(255, 255, 255)
+_G.TopBarText.TextSize = 12
+_G.TopBarText.Font = Enum.Font.SourceSansBold
+_G.TopBarText.Text = "🌽 CORNHUB ИИ: ОЖИДАНИЕ ВКЛЮЧЕНИЯ АВТО-РЕЖИМА"
+_G.TopBarText.Parent = OverlayFrame
+
+-- ЛОКАЛЬНАЯ СИСТЕМА УВЕДОМЛЕНИЙ (ЗАМЕНА NOTIFY ОТ RAYFIELD)
+local function sendNotification(title, content)
+    task.spawn(function()
+        local nFrame = Instance.new("Frame")
+        nFrame.Size = UDim2.new(0, 250, 0, 50)
+        nFrame.Position = UDim2.new(1, -260, 1, -60)
+        nFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        nFrame.Parent = ScreenGui
+        Instance.new("UICorner", nFrame).CornerRadius = UDim.new(0, 6)
+        
+        local nTitle = Instance.new("TextLabel")
+        nTitle.Size = UDim2.new(1, -10, 0, 20)
+        nTitle.Position = UDim2.new(0, 10, 0, 2)
+        nTitle.BackgroundTransparency = 1
+        nTitle.Text = title
+        nTitle.TextColor3 = Color3.fromRGB(254, 154, 0)
+        nTitle.Font = Enum.Font.SourceSansBold
+        nTitle.TextSize = 13
+        nTitle.TextXAlignment = Enum.TextXAlignment.Left
+        nTitle.Parent = nFrame
+        
+        local nText = Instance.new("TextLabel")
+        nText.Size = UDim2.new(1, -10, 0, 25)
+        nText.Position = UDim2.new(0, 10, 0, 22)
+        nText.BackgroundTransparency = 1
+        nText.Text = content
+        nText.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nText.Font = Enum.Font.SourceSans
+        nText.TextSize = 11
+        nText.TextXAlignment = Enum.TextXAlignment.Left
+        nText.Parent = nFrame
+        
+        task.wait(3.5)
+        nFrame:Destroy()
+    end)
+end
+
+-- НАЖАТИЕ НА КНОПКУ АКТИВАЦИИ
+ToggleBtn.MouseButton1Click:Connect(function()
+    isAutoMode = not isAutoMode
+    if isAutoMode then
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+        ToggleBtn.Text = "ВКЛ"
+        matchStartTime = tick()
+        currentStage = "Investment_4"
+        sendNotification("🌽 ИИ АКТИВИРОВАН", "Автофарм запущен! КорнХаб на связи.")
+    else
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        ToggleBtn.Text = "ВЫКЛ"
+        _G.TopBarText.Text = "⛔ ИИ ОТКЛЮЧЕН ИГРОКОМ"
+        _G.TopBarText.TextColor3 = Color3.fromRGB(255, 100, 100)
+    end
+end)
+-- ==========================================
+-- 5️⃣ ЧАСТЬ 5 ИЗ 6: CORNHUB NEUROAI CORE
+-- ==========================================
+
+-- УМНЫЙ ГАТЛИНГ (ТРИГГЕРЫ НА ДЕАТМАРКИ ИЛИ ВЗРЫВ ВАРХЕАДА)
+local function checkSmartGatlingУсловия()
+    if not isAutoMode or isThinking then return end
+    local infernus = findEntity("Infernus")
+    if infernus then
+        local marks = 0
+        for _, obj in pairs(infernus:GetDescendants()) do
+            if obj.Name and (string.find(string.lower(obj.Name), "mark") or string.find(string.lower(obj.Name), "death")) then
+                marks = marks + 1
+            end
+        end
+        if marks >= 2 then
+            useGatling()
+            sendNotification("🔥 СЕЙВ ИНФЕРНУСА!", "У него 2 деатмарка! Спасаем гатлингом!")
+            return
+        end
+    end
+    local warhead = findEntity("Warhead")
+    if warhead then
+        local isExploding = warhead:FindFirstChild("Exploding") or warhead:FindFirstChild("Charge") or (warhead:FindFirstChild("Humanoid") and warhead.Humanoid.Health < 500)
+        if isExploding then
+            useGatling()
+            sendNotification("💥 ФИНАЛЬНЫЙ СНОС", "Вархеад взрывается! Добиваем Гатлингом!")
+        end
+    end
+end
+
+-- СКАНИРОВАНИЕ И РАСЧЕТ ТЕКУЩЕЙ ЭФФЕКТИВНОСТИ МАТЧА
+local function evaluateCurrentEfficiency()
+    if not isAutoMode or isThinking or not matchStartTime then return end
+    local base = Workspace:FindFirstChild("Base") or Workspace:FindFirstChild("MainCore") or Workspace:FindFirstChild("Core")
+    if not base or not base:FindFirstChild("Humanoid") then return end
+    local hpPercent = base.Humanoid.Health / base.Humanoid.MaxHealth
+    local ourUnits = findEntity("Trowel", true) + findEntity("Infernus", true) + findEntity("Atari", true) + findEntity("Rail", true)
+    local enemyUnits = findEntity("Enemy", true) + findEntity("Cyber", true) + findEntity("Rionhorn", true)
+    local currentEfficiency = (hpPercent * 100) + (ourUnits * 10) - (enemyUnits * 15)
+    local currentWatchTime = tick() - matchStartTime
+    if currentEfficiency > currentRoundMaxEfficiency then
+        currentRoundMaxEfficiency = currentEfficiency
+        currentRoundBestTime = currentWatchTime
+        currentRoundBestStage = currentStage
+    end
+end
+
+task.spawn(function() while task.wait(1) do pcall(evaluateCurrentEfficiency) end end)
+
+-- ЛОГИКА МУТАЦИИ ДНК И СБРОСА КАТКИ К ЛУЧШЕМУ МОМЕНТУ БОЯ
+local function runAIThinkingProcess(stage)
+    isThinking = true
+    _G.TopBarText.TextColor3 = Color3.fromRGB(254, 154, 0)
+    local totalTimeSurvived = tick() - matchStartTime
+    sendNotification("🧠 АНАЛИЗ ЛУЧШЕГО МОМЕНТА", "Поиск точки перелома боя и мутации ДНК...")
+    if currentRoundMaxEfficiency > _G.AI_Max_Match_Efficiency then
+        _G.AI_Max_Match_Efficiency = currentRoundMaxEfficiency
+        _G.AI_Best_Moment_Time = currentRoundBestTime
+        _G.AI_Best_Moment_Stage = currentRoundBestStage
+        _G.AI_Best_Infernus_Offset = _G.Infernus_Timing_Offset
+        _G.TopBarText.Text = string.format("🤖 ИИ: Нашел лучший момент на %d-й сек! Запоминаем...", math.floor(_G.AI_Best_Moment_Time))
+    else
+        _G.TopBarText.Text = "🤖 ИИ: Текущий раунд слабее пика. Откат к лучшей тактике..."
+        _G.Infernus_Timing_Offset = _G.AI_Best_Infernus_Offset
+    end
+    local timeDelta = totalTimeSurvived - currentRoundBestTime
+    if timeDelta < 10 then
+        ACTION_COOLDOWN = math.max(0.20, ACTION_COOLDOWN - 0.03)
+    else
+        _G.Infernus_Timing_Offset = _G.Infernus_Timing_Offset + 1.5
+    end
+    task.wait(3.5)
+    currentRoundMaxEfficiency = 0
+    currentRoundBestTime = 0
+    if RestartRemote and RestartRemote:IsA("RemoteEvent") then
+        RestartRemote:FireServer()
+    else
+        local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+        if pGui then
+            for _, btn in pairs(pGui:GetDescendants()) do
+                if btn:IsA("TextButton") and (string.find(string.lower(btn.Name), "restart") or string.find(string.lower(btn.Text), "retry")) then
+                    pcall(function() firesignal(btn.MouseButton1Click) end)
+                    break
+                end
+            end
+        end
+    end
+    isThinking = false
+    currentStage = "Investment_4"
+    matchStartTime = tick()
+end
+
+-- СЛЕЖКА ЗА КРИТИЧЕСКИМ ХП БАЗЫ И НАКОПЛЕНИЕМ СТРЕССА ИИ
+local function handleAIDefeat(reason, stressPoints)
+    if isThinking then return end
+    _G.AI_Total_Stress = _G.AI_Total_Stress + stressPoints
+    if _G.AI_Total_Stress >= 15 then
+        _G.AI_Total_Stress = 0
+        task.spawn(function() runAIThinkingProcess(currentStage) end)
+    end
+end
+
+task.spawn(function()
+    while task.wait(1) do
+        if isAutoMode and not isThinking then
+            local base = Workspace:FindFirstChild("Base") or Workspace:FindFirstChild("MainCore") or Workspace:FindFirstChild("Core")
+            if base and base:FindFirstChild("Humanoid") then
+                local hpPercent = base.Humanoid.Health / base.Humanoid.MaxHealth
+                if hpPercent < 0.25 then
+                    handleAIDefeat("Danger", 2)
+                elseif hpPercent < 0.55 then
+                    handleAIDefeat("Critical", 5)
+                end
+            end
+        end
+    end
+end)
+-- ==========================================
+-- 6️⃣ ЧАСТЬ 6 ИЗ 6: CORNHUB NEUROAI CORE
+-- ==========================================
+
+local lastActionTick = 0
+_G.TBB_AI_Connected = RunService.Heartbeat:Connect(function()
+    if not isAutoMode or isThinking then return end
+    local myCash = getCash()
+    local timePassed = tick() - (matchStartTime or tick())
+    
+    pcall(checkSmartGatlingУсловия)
+    
+    if tick() - lastUIUpdateTime > 0.2 then
+        lastUIUpdateTime = tick()
+        StressLabel.Text = "  Текущий накопленный стресс системы: " .. tostring(_G.AI_Total_Stress) .. "/15"
+        OffsetLabel.Text = string.format("  Адаптивный сдвиг спавна Инфернуса: %.1f сек", _G.Infernus_Timing_Offset)
+        BestMomentLabel.Text = string.format("  Пик эффективности ИИ достигнут на: %d сек", math.floor(_G.AI_Best_Moment_Time))
+        BestStageLabel.Text = "  Стадия лучшего момента: " .. _G.AI_Best_Moment_Stage
+        
+        if timePassed <= BOOT_UP_TIME then
+            local timeleft = math.max(0, BOOT_UP_TIME - timePassed)
+            _G.TopBarText.Text = string.format("🌱 РАЗГОН ЭКОНОМИКИ (Босс спит): %d сек | Наличка: $%d", timeleft, myCash)
+            _G.TopBarText.TextColor3 = Color3.fromRGB(0, 255, 120)
+        else
+            local battleTime = timePassed - BOOT_UP_TIME
+            local kaboonTime = math.max(0, TOTAL_MATCH_TIME - battleTime)
+            local mins = math.floor(kaboonTime / 60)
+            local secs = math.floor(kaboonTime % 60)
+            if kaboonTime <= 60 then
+                _G.TopBarText.Text = string.format("🚨 СТРЕСС-ЭНДГЕЙМ! ДО КАБУМА: %02d:%02d | Шаг: %s | Наличка: $%d", mins, secs, currentStage, myCash)
+                _G.TopBarText.TextColor3 = Color3.fromRGB(255, 30, 30)
+                handleAIDefeat("Кабум близко", 10)
+            else
+                _G.TopBarText.Text = string.format("⚔️ ИИ В БОЮ | ШАГ: %s | ДО КАБУМА: %02d:%02d | Наличка: $%d", currentStage, mins, secs, myCash)
+                _G.TopBarText.TextColor3 = Color3.fromRGB(255, 255, 255)
+            end
+        end
+    end
+    
+    if tick() - lastActionTick < 0.4 then return end
+    lastActionTick = tick()
+    
+    if timePassed <= BOOT_UP_TIME then
+        if currentStage == "Investment_4" then
+            upgradeTech("Investment")
+        end
+    else
+        if currentStage == "Investment_4" then
+            currentStage = "Spawn_2_Trowels"
+        end
+        
+        if currentStage == "Spawn_2_Trowels" then
+            if findEntity("Trowel", true) < 2 then 
+                spawnUnit("Trowel") 
+            else 
+                currentStage = "Wait_Infernus_BG4" 
+            end
+        elseif currentStage == "Wait_Infernus_BG4" then
+            local bgNum = Workspace:FindFirstChild("BackgroundNumbers") or Workspace:FindFirstChild("BG_Numbers")
+            local bgValue = bgNum and bgNum.Value or 4
+            if (bgValue >= 4 or timePassed >= (BOOT_UP_TIME - _G.Infernus_Timing_Offset)) and myCash >= (basePrices.Lil_Infernus * PRICE_MULTIPLIER) then
+                if spawnUnit("Lil_Infernus") then currentStage = "Bank_5" end
+            end
+        elseif currentStage == "Bank_5" then
+            upgradeTech("Bank")
+            if myCash >= (basePrices.Trowel * PRICE_MULTIPLIER) and findEntity("Trowel", true) < 4 then 
+                spawnUnit("Trowel")
+            elseif findEntity("Trowel", true) >= 4 then 
+                currentStage = "Bank_6" 
+            end
+        elseif currentStage == "Bank_6" then
+            if upgradeTech("Bank") then currentStage = "Wait_Vigilante_Gatling" end
+        elseif currentStage == "Wait_Vigilante_Gatling" then
+            currentStage = "Bank_8"
+        elseif currentStage == "Bank_8" then
+            upgradeTech("Bank")
+            if myCash >= 2800 then currentStage = "Cash_2800_Trowel" end
+        elseif currentStage == "Cash_2800_Trowel" then
+            if myCash >= (basePrices.Trowel * PRICE_MULTIPLIER) then
+                spawnUnit("Trowel") upgradeTech("Bank") currentStage = "Wait_Expunger"
+            end
+        elseif currentStage == "Wait_Expunger" then
+            local expunger = findEntity("Expunger")
+            if expunger or myCash >= 3200 then spawnUnit("Trowel") currentStage = "Cash_3200_Infernus" end
+        elseif currentStage == "Cash_3200_Infernus" then
+            if myCash >= (basePrices.Lil_Infernus * PRICE_MULTIPLIER) then
+                spawnUnit("Lil_Infernus")
+                currentStage = "Wait_CyberBattler_Death"
+            end
+        elseif currentStage == "Wait_CyberBattler_Death" then
+            local cyber = findEntity("Cyber")
+            if not cyber then spawnUnit("Prospect") currentStage = "Wait_Bloodhorn_Scream" end
+        elseif currentStage == "Wait_Bloodhorn_Scream" then
+            local bloodhorn = findEntity("Bloodhorn")
+            if bloodhorn or myCash >= basePrices.Operator * PRICE_MULTIPLIER then
+                if spawnUnit("Operator") then
+                    if getCash() >= basePrices.Atari * PRICE_MULTIPLIER then
+                        spawnUnit("Atari")
+                    end
+                    currentStage = "Late_Spam_Phase"
+                end
+            end
+        elseif currentStage == "Late_Spam_Phase" then
+            local enemiesCount = findEntity("Enemy", true) + findEntity("Cyber", true)
+            if myCash >= (basePrices.Rail_Battler * PRICE_MULTIPLIER) then spawnUnit("Rail_Battler") end
+            if myCash >= (basePrices.Prospect * PRICE_MULTIPLIER) then spawnUnit("Prospect") end
+            if enemiesCount > 3 then
+                spawnUnit("Trowel")
+                spawnUnit("Conjurer")
+            else
+                spawnUnit("Atari")
+            end
+        end
+    end
+end)
